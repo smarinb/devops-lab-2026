@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devops-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: devops-api
+  template:
+    metadata:
+      labels:
+        app: devops-api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/smarinb/devops-lab-2026:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+
