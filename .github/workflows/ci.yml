@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: self-hosted
 
     permissions:
@@ -29,10 +29,23 @@ jobs:
         with:
           context: ./app
           push: true
-          tags: ghcr.io/${{ github.repository }}:latest
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
 
-      - name: Deploy to Kubernetes
+      - name: Set kubeconfig for k3d
         run: |
-          kubectl apply -f k8s/
-          kubectl rollout restart deployment devops-api
+          mkdir -p $HOME/.kube
+          k3d kubeconfig get devops-lab > $HOME/.kube/config
+          kubectl get nodes
 
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install devops-api ./devops-api-chart \
+            --namespace helm-lab \
+            --create-namespace \
+            --set image.repository=ghcr.io/${{ github.repository }} \
+            --set image.tag=${{ github.sha }}
+
+      - name: Verify rollout
+        run: |
+          kubectl rollout status deployment/devops-api -n helm-lab --timeout=120s
+          kubectl get pods -n helm-lab
