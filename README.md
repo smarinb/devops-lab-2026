@@ -2,79 +2,131 @@
 
 ![CI](https://github.com/smarinb/devops-lab-2026/actions/workflows/ci.yml/badge.svg)
 
-Hands-on DevOps lab simulating production-style workflows using containers, CI/CD and Kubernetes-ready architecture.
+Hands-on DevOps lab simulating production-style workflows using containers, CI/CD automation and Kubernetes-based architecture.
 
-This repository documents my journey transitioning into a production-focused DevOps profile.
+This repository documents my transition into a production-focused DevOps / Cloud Engineering profile by building real systems end-to-end and evolving them incrementally.
 
 ---
 
 ## 🧱 Current Stack
 
 - FastAPI backend  
-- Nginx reverse proxy  
+- Nginx reverse proxy (Docker phase)  
 - Docker & Docker Compose  
 - GitHub Actions (CI pipeline)  
 - GitHub Container Registry (GHCR)  
+- k3d multi-node Kubernetes cluster (1 control plane + 2 workers)  
+- Traefik Ingress Controller  
+- Self-hosted GitHub Actions runner (running inside WSL)  
 
 ---
 
-## 🔄 CI/CD Workflow
+## 🔄 CI/CD Workflow (Current Phase)
 
 Every push to `main` triggers:
 
-    git push
-       ↓
-    GitHub Actions
-       ↓
-    Build Docker image
-       ↓
-    Push image to GHCR
+```
+git push
+   ↓
+GitHub Actions (self-hosted runner)
+   ↓
+Build Docker image
+   ↓
+Push image to GHCR
+   ↓
+kubectl apply
+   ↓
+kubectl rollout restart
+   ↓
+Pods recreated automatically
+```
 
 Published image:
 
-    ghcr.io/smarinb/devops-lab-2026:latest
+```
+ghcr.io/smarinb/devops-lab-2026:latest
+```
 
 ---
 
-## 🏗️ Architecture (Current Phase)
+## ☸️ Kubernetes Architecture
 
-    Client Request
-          ↓
-        Nginx
-          ↓
-      FastAPI App
-          ↓
-      Docker Image
-          ↓
-      GitHub Actions
-          ↓
-      GHCR Registry
+Full request flow validated end-to-end:
+
+```
+Client
+   ↓
+k3d LoadBalancer (localhost:8081)
+   ↓
+Traefik (Ingress Controller)
+   ↓
+Ingress (host-based routing: devops.local)
+   ↓
+ClusterIP Service
+   ↓
+Deployment (2 replicas)
+   ↓
+FastAPI Pods
+```
+
+Key concepts implemented:
+
+- Multi-node cluster simulation  
+- Host-based routing with Ingress  
+- Rolling updates  
+- Automated pod recreation  
+- End-to-end request validation  
+- CI-triggered deployment  
 
 ---
 
-## ▶️ Run Locally
+## ▶️ Run Locally (Docker Phase)
 
-    docker compose up -d --build
+```
+docker compose up -d --build
+```
 
 Test endpoints:
 
-    curl http://localhost:8080
-    curl http://localhost:8080/health
+```
+curl http://localhost:8080
+curl http://localhost:8080/health
+```
+
+---
+
+## ▶️ Deploy to Kubernetes (Manual Mode)
+
+```
+kubectl apply -f k8s/
+```
+
+Test Ingress routing:
+
+```
+curl -H "Host: devops.local" http://localhost:8081/health
+```
 
 ---
 
 ## 📂 Project Structure
 
-    .
-    ├── app/
-    │   ├── Dockerfile
-    │   ├── main.py
-    │   └── requirements.txt
-    ├── nginx/
-    │   └── nginx.conf
-    ├── docker-compose.yml
-    └── .github/workflows/
-        └── ci.yml
+```
+.
+├── app/
+│   ├── Dockerfile
+│   ├── main.py
+│   └── requirements.txt
+├── nginx/
+│   └── nginx.conf
+├── docker-compose.yml
+├── k8s/
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── ingress.yaml
+└── .github/workflows/
+    └── ci.yml
+```
 
 ---
 
@@ -84,7 +136,8 @@ Test endpoints:
 - [x] Reverse proxy setup  
 - [x] Automated CI pipeline  
 - [x] Publish image to registry  
-- [ ] Deploy to local Kubernetes (k3d)  
+- [x] Deploy to local Kubernetes (k3d)  
+- [x] Self-hosted CI/CD deployment  
 - [ ] Helm packaging  
 - [ ] GitOps with ArgoCD  
 - [ ] Terraform-based cloud deployment  
@@ -94,7 +147,7 @@ Test endpoints:
 
 ## 🎯 Goal
 
-Build and document production-like DevOps systems publicly to strengthen practical cloud engineering skills.
+Build and document production-style DevOps systems publicly to strengthen real-world cloud engineering skills and demonstrate infrastructure maturity.
 
 ---
 
@@ -102,9 +155,10 @@ Build and document production-like DevOps systems publicly to strengthen practic
 
 - Automation  
 - Infrastructure reproducibility  
-- CI/CD best practices  
+- CI/CD lifecycle  
+- Kubernetes networking fundamentals  
 - Incremental system evolution  
-- Cloud-native mindset  
+- Platform engineering mindset  
 
 ---
 
@@ -112,5 +166,8 @@ Build and document production-like DevOps systems publicly to strengthen practic
 
 This is an evolving lab designed to simulate real-world DevOps environments step by step.
 
-Building in public.
+Each phase builds on the previous one:
 
+Containers → CI → Kubernetes → Helm → GitOps → Cloud Infrastructure.
+
+Building in public.
