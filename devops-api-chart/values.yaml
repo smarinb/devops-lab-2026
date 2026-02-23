@@ -9,7 +9,7 @@ replicaCount: 2
 image:
   repository: ghcr.io/smarinb/devops-lab-2026
   tag: "latest"
-  pullPolicy: Always
+  pullPolicy: IfNotPresent
   # This sets the pull policy for images.
   # Overrides the image tag whose default is the chart appVersion.
 
@@ -111,8 +111,14 @@ httpRoute:
   #     headers:
   #     - name: version
   #       value: v2
+  resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "250m"
+    memory: "256Mi"
 
-resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
   # choice for the user. This also increases chances charts run on environments with little
   # resources, such as Minikube. If you do want to specify resources, uncomment the following
