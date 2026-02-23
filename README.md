@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/smarinb/devops-lab-2026/actions/workflows/ci.yml/badge.svg)
 
-Hands-on DevOps lab simulating production-style workflows using containers, CI/CD automation, Kubernetes release management, autoscaling, resiliency and workload hardening.
+Hands-on DevOps lab simulating production-style workflows using containers, CI/CD automation, Kubernetes release management, autoscaling, resiliency, workload hardening and observability.
 
 This repository documents my transition toward a production-focused DevOps / Cloud Engineering profile by incrementally evolving real infrastructure systems in public.
 
@@ -20,6 +20,7 @@ This repository documents my transition toward a production-focused DevOps / Clo
 - Horizontal Pod Autoscaler (CPU-based)  
 - PodDisruptionBudget  
 - metrics-server  
+- kube-prometheus-stack (Prometheus + Grafana)  
 - Hardened SecurityContext  
 
 ---
@@ -38,10 +39,6 @@ git push
 
 Images are immutable and versioned by commit SHA.
 
-Example:
-
-ghcr.io/smarinb/devops-lab-2026:<commit-sha>
-
 ---
 
 ## ☸️ Kubernetes Architecture
@@ -55,7 +52,11 @@ Client
 → ClusterIP Service  
 → Deployment (replicated pods)
 
-Control-plane is tainted (`NoSchedule`) to simulate production behavior.
+Control-plane node is tainted:
+
+node-role.kubernetes.io/control-plane=true:NoSchedule  
+
+Workloads run only on worker nodes.
 
 ---
 
@@ -75,7 +76,7 @@ devops-api-chart/
 
 Key capabilities:
 
-- Parameterized image repo & tag  
+- Parameterized image repository & tag  
 - RollingUpdate strategy (maxUnavailable: 0, maxSurge: 1)  
 - Resource requests & limits  
 - Liveness & readiness probes  
@@ -86,49 +87,54 @@ Key capabilities:
 
 ---
 
-## 📈 Horizontal Pod Autoscaler (HPA)
+## 📈 Horizontal Pod Autoscaler (Validated Under Load)
 
-CPU-based autoscaling:
+Configuration:
 
 - minReplicas: 2  
 - maxReplicas: 6  
 - targetCPUUtilizationPercentage: 60  
+- CPU request: 100m  
+- CPU limit: 250m  
 
-Validated behavior:
+### Load Test Scenario
 
-- 2 replicas  
-- CPU spike above 120%  
-- Automatic scale up to 4 replicas  
-- Load removed  
-- Automatic scale down to 2 replicas  
+CPU-intensive process executed inside container:
 
-Scaling model:
+yes > /dev/null
+
+Observed behavior:
+
+- CPU usage reached ~246m  
+- CPU Requests % peaked at ~246%  
+- CPU throttling reached ~98%  
+- HPA triggered scale-up  
+- Additional replicas created  
+- Load redistributed  
+- CPU normalized after load stopped  
+
+Scaling formula validated:
 
 desiredReplicas = currentReplicas × (currentCPU / targetCPU)
 
 ---
 
-## 🛡 Resiliency & Availability
+## 🛡 Resiliency Validation
 
-### PodDisruptionBudget
+### Node Failure Simulation (Hard Crash)
 
-minAvailable: 1  
+Simulated worker failure:
 
-Ensures service remains available during node drain operations.
+docker stop k3d-devops-lab-agent-1
 
-### Node Maintenance Simulation
+Observed behavior:
 
-- Tested cordon + drain  
-- ReplicaSet re-schedules pods automatically  
-- Availability maintained  
+- Node transitioned to NotReady  
+- Pods entered Unknown state  
+- ReplicaSet recreated pods on healthy node  
+- Service availability maintained  
 
-### Control-plane Hardening
-
-Control-plane node tainted:
-
-node-role.kubernetes.io/control-plane=true:NoSchedule  
-
-Ensures workloads run only on worker nodes.
+Validated self-healing without manual intervention.
 
 ---
 
@@ -142,7 +148,30 @@ SecurityContext applied:
 - readOnlyRootFilesystem: true  
 - capabilities: drop ALL  
 
-Validated workload runs without root privileges.
+Validated container runs without root privileges.
+
+---
+
+## 📊 Observability Stack
+
+Installed:
+
+kube-prometheus-stack
+
+Includes:
+
+- Prometheus  
+- Grafana  
+- Node Exporter  
+- kube-state-metrics  
+- Alertmanager  
+
+Validated:
+
+- CPU per pod visualization  
+- Requests vs Limits correlation  
+- CPU throttling visibility  
+- Autoscaling behavior in real time  
 
 ---
 
@@ -151,14 +180,15 @@ Validated workload runs without root privileges.
 - Immutable image versioning (SHA tags)  
 - Rolling updates without downtime  
 - Resource-bound containers  
-- CPU-based autoscaling  
+- CPU throttling behavior  
+- Horizontal Pod Autoscaler logic  
 - metrics-server integration  
-- PodDisruptionBudget  
+- PodDisruptionBudget enforcement  
 - Node taints & scheduling control  
-- Graceful termination behavior  
+- ReplicaSet self-healing  
+- Node failure recovery  
 - Workload hardening (least privilege)  
-- Multi-node scheduling behavior  
-- Troubleshooting HPA & Helm templating issues  
+- Observability-driven validation  
 
 ---
 
@@ -173,7 +203,8 @@ Validated workload runs without root privileges.
 - [x] PodDisruptionBudget  
 - [x] Control-plane isolation (taints)  
 - [x] SecurityContext hardening  
-- [ ] Observability stack (Prometheus + Grafana)  
+- [x] Observability stack (Prometheus + Grafana)  
+- [ ] Autoscaling tuning & advanced scaling strategies  
 - [ ] GitOps (ArgoCD)  
 - [ ] Terraform-based cloud deployment  
 
@@ -187,6 +218,7 @@ Build and document production-style DevOps systems publicly to demonstrate:
 - Automation depth  
 - Cloud-native design principles  
 - Platform engineering mindset  
+- Observability-driven operations  
 
 ---
 
