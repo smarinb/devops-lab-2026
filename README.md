@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/smarinb/devops-lab-2026/actions/workflows/ci.yml/badge.svg)
 
-Hands-on DevOps lab simulating production-style workflows using containers, CI/CD automation, Kubernetes release management and autoscaling.
+Hands-on DevOps lab simulating production-style workflows using containers, CI/CD automation, Kubernetes release management, autoscaling, resiliency and workload hardening.
 
 This repository documents my transition toward a production-focused DevOps / Cloud Engineering profile by incrementally evolving real infrastructure systems in public.
 
@@ -18,11 +18,13 @@ This repository documents my transition toward a production-focused DevOps / Clo
 - Traefik Ingress Controller  
 - Helm (release lifecycle management)  
 - Horizontal Pod Autoscaler (CPU-based)  
+- PodDisruptionBudget  
 - metrics-server  
+- Hardened SecurityContext  
 
 ---
 
-## 🔄 CI/CD Workflow (Current Phase)
+## 🔄 CI/CD Workflow
 
 Every push to `main` triggers:
 
@@ -34,7 +36,7 @@ git push
 → helm upgrade --install  
 → Rolling update in Kubernetes  
 
-Images are versioned using immutable commit SHA tags instead of `latest`.
+Images are immutable and versioned by commit SHA.
 
 Example:
 
@@ -47,11 +49,13 @@ ghcr.io/smarinb/devops-lab-2026:<commit-sha>
 Validated request flow end-to-end:
 
 Client  
-→ k3d LoadBalancer (localhost:8081)  
-→ Traefik (Ingress Controller)  
-→ Ingress (host-based routing)  
+→ k3d LoadBalancer  
+→ Traefik  
+→ Ingress  
 → ClusterIP Service  
 → Deployment (replicated pods)
+
+Control-plane is tainted (`NoSchedule`) to simulate production behavior.
 
 ---
 
@@ -66,113 +70,79 @@ devops-api-chart/
     ├── deployment.yaml  
     ├── service.yaml  
     ├── ingress.yaml  
-    └── hpa.yaml  
+    ├── hpa.yaml  
+    └── pdb.yaml  
 
-Key features:
+Key capabilities:
 
-- Parameterized image repository & tag  
-- SHA-based image deployment  
+- Parameterized image repo & tag  
 - RollingUpdate strategy (maxUnavailable: 0, maxSurge: 1)  
-- Resource requests & limits defined  
+- Resource requests & limits  
 - Liveness & readiness probes  
 - Horizontal Pod Autoscaler  
-- Release versioning  
-- Upgrade & rollback capability  
-- Namespace isolation  
-
-Example commands:
-
-helm upgrade --install devops-api ./devops-api-chart -n helm-lab  
-helm history devops-api -n helm-lab  
-helm rollback devops-api <revision> -n helm-lab  
-
----
-
-## ⚙️ Resource Management
-
-CPU and memory boundaries are explicitly defined:
-
-resources:
-  requests:
-    cpu: 100m
-    memory: 128Mi
-  limits:
-    cpu: 250m
-    memory: 256Mi
-
-Requests are required for HPA to calculate CPU utilization percentage.
+- PodDisruptionBudget  
+- Graceful shutdown support  
+- Release versioning & rollback  
 
 ---
 
 ## 📈 Horizontal Pod Autoscaler (HPA)
 
-CPU-based autoscaling enabled using autoscaling/v2.
-
-Configuration:
+CPU-based autoscaling:
 
 - minReplicas: 2  
 - maxReplicas: 6  
 - targetCPUUtilizationPercentage: 60  
 
-Under load testing:
+Validated behavior:
 
 - 2 replicas  
 - CPU spike above 120%  
 - Automatic scale up to 4 replicas  
 - Load removed  
-- Automatic stabilization and scale down to 2 replicas  
+- Automatic scale down to 2 replicas  
 
-HPA calculation model:
+Scaling model:
 
 desiredReplicas = currentReplicas × (currentCPU / targetCPU)
 
 ---
 
-## 🏗 Namespaces
+## 🛡 Resiliency & Availability
 
-- default → Raw manifests (legacy/manual phase)  
-- helm-lab → Helm-managed release (current phase)  
+### PodDisruptionBudget
 
-This separation allows comparison between unmanaged and release-managed lifecycle strategies.
+minAvailable: 1  
 
----
+Ensures service remains available during node drain operations.
 
-## ▶️ Local Development (Docker Phase)
+### Node Maintenance Simulation
 
-docker build -t devops-api .  
-docker run -p 8080:8000 devops-api  
+- Tested cordon + drain  
+- ReplicaSet re-schedules pods automatically  
+- Availability maintained  
 
-Test:
+### Control-plane Hardening
 
-curl http://localhost:8080/health  
+Control-plane node tainted:
 
----
+node-role.kubernetes.io/control-plane=true:NoSchedule  
 
-## ▶️ Kubernetes Deployment via Helm
-
-helm upgrade --install devops-api ./devops-api-chart -n helm-lab  
-
-Port-forward test:
-
-kubectl port-forward svc/devops-api-devops-api-chart 9000:8000 -n helm-lab  
-curl http://localhost:9000/health  
-
-Check autoscaling:
-
-kubectl get hpa -n helm-lab  
-kubectl get pods -n helm-lab  
-kubectl top pods -n helm-lab  
+Ensures workloads run only on worker nodes.
 
 ---
 
-## 📂 Project Structure
+## 🔐 Workload Security Hardening
 
-.  
-├── app/  
-├── k8s/                    # Raw manifests (legacy phase)  
-├── devops-api-chart/       # Helm-managed deployment  
-├── .github/workflows/      # CI/CD automation  
-└── README.md  
+SecurityContext applied:
+
+- runAsNonRoot: true  
+- runAsUser: 1000  
+- allowPrivilegeEscalation: false  
+- readOnlyRootFilesystem: true  
+- capabilities: drop ALL  
+
+Validated workload runs without root privileges.
 
 ---
 
@@ -183,10 +153,12 @@ kubectl top pods -n helm-lab
 - Resource-bound containers  
 - CPU-based autoscaling  
 - metrics-server integration  
-- Helm release lifecycle management  
-- Multi-node cluster scheduling  
-- Troubleshooting HPA metrics issues  
-- Namespace isolation strategies  
+- PodDisruptionBudget  
+- Node taints & scheduling control  
+- Graceful termination behavior  
+- Workload hardening (least privilege)  
+- Multi-node scheduling behavior  
+- Troubleshooting HPA & Helm templating issues  
 
 ---
 
@@ -194,17 +166,16 @@ kubectl top pods -n helm-lab
 
 - [x] Containerized backend  
 - [x] Automated CI pipeline  
-- [x] Publish image to registry  
-- [x] Deploy to local Kubernetes (k3d)  
-- [x] Self-hosted CI/CD deployment  
-- [x] Helm packaging & release management  
+- [x] Deploy to multi-node Kubernetes  
+- [x] Helm release lifecycle  
 - [x] Resource requests & limits  
 - [x] Horizontal Pod Autoscaler  
-- [ ] PodDisruptionBudget  
-- [ ] Graceful shutdown handling  
-- [ ] GitOps with ArgoCD  
-- [ ] Terraform-based cloud deployment  
+- [x] PodDisruptionBudget  
+- [x] Control-plane isolation (taints)  
+- [x] SecurityContext hardening  
 - [ ] Observability stack (Prometheus + Grafana)  
+- [ ] GitOps (ArgoCD)  
+- [ ] Terraform-based cloud deployment  
 
 ---
 
