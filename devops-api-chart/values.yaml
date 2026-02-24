@@ -55,7 +55,7 @@ httpRoute:
 # 🔥 ESTE BLOQUE ES CLAVE PARA HPA
 resources:
   requests:
-    cpu: 200m
+    cpu: 20m
     memory: 128Mi
   limits: {}
 
