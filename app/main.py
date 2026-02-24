@@ -8,9 +8,10 @@ def health():
     return {"status": "ok", "host": socket.gethostname()}
 @app.get("/burn")
 def burn():
+    import math
     x = 0
-    for i in range(30_000_000):
-        x += i
+    for i in range(600_000_000):
+        x += math.sqrt(i)
     return {"result": x}
 @app.get("/")
 def root():
