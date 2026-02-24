@@ -55,11 +55,9 @@ httpRoute:
 # 🔥 ESTE BLOQUE ES CLAVE PARA HPA
 resources:
   requests:
-    cpu: 100m
+    cpu: 200m
     memory: 128Mi
-  limits:
-    cpu: 250m
-    memory: 256Mi
+  limits: {}
 
 livenessProbe:
   httpGet:
