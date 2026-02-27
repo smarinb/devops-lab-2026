@@ -2,30 +2,55 @@
 
 ![CI](https://github.com/smarinb/devops-lab-2026/actions/workflows/ci.yml/badge.svg)
 
-Hands-on DevOps lab simulating production-style workflows using containers, CI/CD automation, Kubernetes release management, autoscaling, resiliency, workload hardening and observability.
+Production-style DevOps laboratory built in public.
 
-This repository documents my transition toward a production-focused DevOps / Cloud Engineering profile by incrementally evolving real infrastructure systems in public.
+This repository documents my transition toward a production-focused DevOps / Cloud Engineering profile by incrementally evolving real infrastructure systems: containerization, CI/CD automation, Kubernetes release management, autoscaling tuning, resiliency validation, workload hardening, observability, and Infrastructure as Code.
 
 ---
 
-## 🧱 Current Stack
+# 🧱 Architecture Overview
+
+Current stack:
 
 - FastAPI backend
 - Docker
-- GitHub Actions (self-hosted runner inside WSL)
-- GitHub Container Registry (GHCR)
-- k3d multi-node Kubernetes cluster (1 control plane + 2 workers)
+- GitHub Actions (self-hosted runner in WSL)
+- GitHub Container Registry (GHCR, SHA-tagged images)
+- k3d multi-node Kubernetes cluster (1 control plane tainted + 2 workers)
 - Traefik Ingress Controller
 - Helm (release lifecycle management)
-- Horizontal Pod Autoscaler (CPU-based)
+- Horizontal Pod Autoscaler (CPU-based, tuned)
 - PodDisruptionBudget
 - metrics-server
 - kube-prometheus-stack (Prometheus + Grafana)
 - Hardened SecurityContext
+- Infrastructure-as-Code evolution (Terraform in progress)
 
 ---
 
-## 🔄 CI/CD Workflow
+# 📂 Repository Structure
+
+lab-devops-2026/
+├── app/                     # FastAPI application
+├── helm/                    # Helm chart (packaging layer)
+├── k8s/                     # Raw Kubernetes manifests (HPA, PDB, etc.)
+├── infra/                   # Infrastructure as Code & operational scripts
+├── nginx/                   # Reverse proxy configuration
+├── .github/                 # CI workflows
+├── docker-compose.yml       # Local development environment
+└── README.md
+
+The repository separates:
+
+- Application layer
+- Packaging layer
+- Kubernetes configuration
+- Infrastructure as Code (evolving)
+- Automation workflows
+
+---
+
+# 🚀 CI/CD Workflow
 
 Every push to `main` triggers:
 
@@ -39,11 +64,17 @@ git push
 
 Images are immutable and versioned by commit SHA.
 
+This enables:
+
+- Safe rollbacks  
+- Full traceability  
+- Deterministic deployments  
+
 ---
 
-## ☸️ Kubernetes Architecture
+# ☸️ Kubernetes Architecture
 
-Validated request flow end-to-end:
+Validated request flow:
 
 Client  
 → k3d LoadBalancer  
@@ -56,188 +87,56 @@ Control-plane node is tainted:
 
 node-role.kubernetes.io/control-plane=true:NoSchedule
 
-Workloads run only on worker nodes.
+Workloads are scheduled only on worker nodes.
 
 ---
 
-## 📦 Helm Release Management
+# 📦 Helm Release Management
 
-Helm chart structure:
+Helm chart located under:
 
-devops-api-chart/  
-├── Chart.yaml  
-├── values.yaml  
-└── templates/  
-    ├── deployment.yaml  
-    ├── service.yaml  
-    ├── ingress.yaml  
-    ├── hpa.yaml  
-    └── pdb.yaml  
+helm/
 
 Key capabilities:
 
 - Parameterized image repository & tag
 - RollingUpdate strategy (maxUnavailable: 0, maxSurge: 1)
-- Resource requests & limits
+- Resource requests calibration
 - Liveness & readiness probes
 - Horizontal Pod Autoscaler
 - PodDisruptionBudget
 - Graceful shutdown support
-- Release versioning & rollback
+- Versioned upgrades & rollback capability
 
 ---
 
-# 📈 Horizontal Pod Autoscaler — Learning Evolution
+# 📈 Horizontal Pod Autoscaler — Validated Behavior
 
-## Phase 1 — Basic CPU Scaling
+Autoscaling behavior validated under sustained CPU pressure.
 
-Initial configuration:
+Key findings:
 
-- minReplicas: 2
-- maxReplicas: 6
-- targetCPUUtilizationPercentage: 60
-- CPU request: 100m
-- CPU limit: 250m
+- HPA scales on relative utilization (usage / request), not absolute CPU.
+- Poorly calibrated requests block autoscaling.
+- CPU limits can distort scaling signals via throttling.
+- Runtime concurrency (Uvicorn workers) directly impacts scaling behavior.
+- Scale-up is aggressive.
+- Scale-down is conservative (stabilization window ≈ 300s).
 
-Load generated via:
-
-yes > /dev/null
-
-Observed:
-
-- CPU reached ~246m
-- Utilization peaked ~246%
-- CPU throttling ~98%
-- HPA scaled up correctly
-- Replicas redistributed load
-- Scale-down occurred after load stopped
-
-Validated formula:
+Control loop validated:
 
 desiredReplicas = currentReplicas × (currentCPU / targetCPU)
 
----
-
-## Phase 2 — Removing CPU Limits
-
-Objective:
-
-- Eliminate artificial throttling
-- Allow pods to use full node CPU capacity
-- Validate real consumption behavior
-
-Changes:
-
-- Removed cpu limits
-- Increased request to 200m
-
-Result:
-
-- No more CFS throttling
-- Pods able to consume full core
-- HPA behavior cleaner
-
-Key learning:
-
-CPU limits can distort autoscaling signals.
-
----
-
-## Phase 3 — Runtime Concurrency Impact
-
-Issue discovered:
-
-- Single-worker Uvicorn prevented real parallel CPU usage.
-- Multiple clients did not generate real CPU pressure.
-
-Fix:
-
-- Enabled 4 workers in Uvicorn.
-
-Result:
-
-- True CPU-bound parallelism
-- Concurrency visible at pod level
-- HPA received valid sustained metrics
-
-Key learning:
-
-Autoscaling depends on application concurrency model.
-
----
-
-## Phase 4 — Requests Calibration (Critical Insight)
-
-Observation:
-
-CPU consumption ≈ 15m  
-CPU request = 200m  
-
-Utilization:
-
-15m / 200m ≈ 7%
-
-→ HPA never scaled.
-
-Adjustment:
-
-cpu request reduced to 20m.
-
-Now:
-
-15m / 20m ≈ 75%
-
-Observed behavior:
-
-- cpu: 58%/60% → replicas 4
-- cpu: 76%/60% → replicas 5
-- cpu: 85%/60% → replicas 6
-
-HPA scaled progressively under sustained pressure.
-
-Key learning:
-
-HPA scales on relative utilization (usage / request), not absolute CPU.
-
-Poorly calibrated requests block autoscaling.
-
----
-
-## Phase 5 — Scale-Down Stabilization
-
-After deleting load generators:
-
 Observed:
 
-- CPU dropped below target
-- Replicas did not drop immediately
-- Gradual reduction: 6 → 5 → 4 → 3 → 2
-
-Explanation:
-
-HPA scale-down stabilization window (~300s) prevents flapping.
-
-Key learning:
-
-Scale-up is aggressive.  
-Scale-down is conservative by design.
-
----
-
-## 📊 Autoscaling Behavior Fully Validated
-
-✔ Scale-up under sustained pressure  
-✔ Scale-down stabilization  
-✔ Impact of requests on scaling decisions  
-✔ Runtime concurrency influence  
-✔ Removal of throttling artifacts  
-✔ CI/CD blocking faulty rollouts  
-✔ ReplicaSet self-healing  
+✔ Progressive scale-up under pressure  
+✔ Stabilized scale-down  
+✔ No flapping  
 ✔ Observability-driven validation  
 
 ---
 
-## 🛡 Resiliency Validation
+# 🛡 Resiliency Validation
 
 Simulated worker failure:
 
@@ -254,7 +153,7 @@ Self-healing validated.
 
 ---
 
-## 🔐 Workload Security Hardening
+# 🔐 Workload Security Hardening
 
 SecurityContext applied:
 
@@ -268,59 +167,56 @@ Validated non-root container execution.
 
 ---
 
-## 📊 Observability Stack
+# 📊 Observability
 
-Installed:
-
-kube-prometheus-stack
-
-Validated:
+kube-prometheus-stack installed to validate:
 
 - CPU per pod
-- Requests vs limits correlation
+- Requests vs usage correlation
 - Throttling visibility
 - HPA behavior in real time
-- Node failure impact analysis
+- Node failure impact
+
+Monitoring used as validation tool, not decoration.
 
 ---
 
-## 🧠 Engineering Concepts Demonstrated
+# 🧠 Engineering Concepts Demonstrated
 
-- Immutable image versioning (SHA tags)
+- Immutable image versioning (SHA tagging)
 - Zero-downtime rolling updates
 - Resource right-sizing
 - CPU throttling mechanics
 - HPA control loop behavior
 - Stabilization windows
-- Concurrency impact on scaling
+- Runtime concurrency impact
 - PodDisruptionBudget enforcement
-- Node taints & scheduling control
+- Node taints & scheduling isolation
 - ReplicaSet self-healing
 - Observability-first validation
-- Production-style CI/CD gating
+- CI/CD gating
+- Progressive Infrastructure-as-Code adoption
 
 ---
 
-## 🛣 Roadmap
+# 🛣 Roadmap
 
 - [x] Containerized backend
 - [x] Automated CI pipeline
-- [x] Deploy to multi-node Kubernetes
+- [x] Multi-node Kubernetes deployment
 - [x] Helm release lifecycle
-- [x] Resource requests & limits
-- [x] Horizontal Pod Autoscaler
-- [x] Autoscaling tuning (advanced)
-- [x] PodDisruptionBudget
-- [x] Control-plane isolation
-- [x] SecurityContext hardening
+- [x] Advanced HPA tuning
 - [x] Observability stack
-- [ ] Advanced HPA behavior tuning
+- [x] Workload hardening
+- [x] Resiliency validation
+- [ ] Advanced HPA behavior policies
+- [ ] Terraform-driven full environment reproducibility
 - [ ] GitOps (ArgoCD)
-- [ ] Terraform-based cloud deployment
+- [ ] Cloud deployment (AWS)
 
 ---
 
-## 🎯 Goal
+# 🎯 Goal
 
 Build and document production-style DevOps systems publicly to demonstrate:
 
@@ -329,8 +225,7 @@ Build and document production-style DevOps systems publicly to demonstrate:
 - Cloud-native design principles
 - Platform engineering mindset
 - Observability-driven operations
-
----
+- Infrastructure as Code proficiency
 
 Building in public.  
 System by system.  
