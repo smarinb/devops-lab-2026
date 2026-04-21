@@ -13,12 +13,12 @@ This repository documents my transition toward a production-focused DevOps / Clo
 Current stack:
 
 - FastAPI backend
-- Docker
+- Docker & GitHub Container Registry (GHCR)
 - GitHub Actions (self-hosted runner in WSL)
-- GitHub Container Registry (GHCR, SHA-tagged images)
+- **ArgoCD (GitOps Engine)** 🐙
 - k3d multi-node Kubernetes cluster (1 control plane tainted + 2 workers)
 - Traefik Ingress Controller
-- Helm (release lifecycle management)
+- Helm (declarative packaging layer)
 - Horizontal Pod Autoscaler (CPU-based, tuned)
 - PodDisruptionBudget
 - metrics-server
@@ -40,35 +40,21 @@ lab-devops-2026/
 ├── docker-compose.yml       # Local development environment
 └── README.md
 
-The repository separates:
-
-- Application layer
-- Packaging layer
-- Kubernetes configuration
-- Infrastructure as Code (evolving)
-- Automation workflows
-
 ---
 
-# 🚀 CI/CD Workflow
+# 🚀 CI/CD & GitOps Workflow
 
-Every push to `main` triggers:
+The repository has evolved to a **Declarative GitOps model**:
 
-git push  
-→ GitHub Actions (self-hosted runner)  
-→ Build Docker image  
-→ Tag image with commit SHA  
-→ Push image to GHCR  
-→ helm upgrade --install  
-→ Rolling update in Kubernetes  
-
-Images are immutable and versioned by commit SHA.
+**git push** → **GitHub Actions**: Build Docker image & Tag with commit SHA  
+→ **GHCR**: Push immutable image  
+→ **ArgoCD**: Automated reconciliation loop  
+→ **Kubernetes**: Rolling update & Self-healing  
 
 This enables:
-
-- Safe rollbacks  
-- Full traceability  
-- Deterministic deployments  
+- **Decoupled Deployments**: CI only builds; ArgoCD ensures the cluster state matches Git.
+- **Full Traceability**: Every cluster change is backed by a Git commit.
+- **Drift Detection**: Automated reversion of manual `kubectl` overrides.
 
 ---
 
@@ -76,37 +62,27 @@ This enables:
 
 Validated request flow:
 
-Client  
-→ k3d LoadBalancer  
-→ Traefik  
-→ Ingress  
-→ ClusterIP Service  
+Client
+→ k3d LoadBalancer
+→ Traefik
+→ Ingress
+→ ClusterIP Service
 → Deployment (replicated pods)
 
 Control-plane node is tainted:
-
-node-role.kubernetes.io/control-plane=true:NoSchedule
-
-Workloads are scheduled only on worker nodes.
+`node-role.kubernetes.io/control-plane=true:NoSchedule`
 
 ---
 
 # 📦 Helm Release Management
 
-Helm chart located under:
+Helm chart located under `helm/`. Key capabilities:
 
-helm/
-
-Key capabilities:
-
-- Parameterized image repository & tag
+- Parameterized image repository & SHA tagging
 - RollingUpdate strategy (maxUnavailable: 0, maxSurge: 1)
 - Resource requests calibration
 - Liveness & readiness probes
-- Horizontal Pod Autoscaler
-- PodDisruptionBudget
-- Graceful shutdown support
-- Versioned upgrades & rollback capability
+- Horizontal Pod Autoscaler & PodDisruptionBudget integration
 
 ---
 
@@ -115,87 +91,53 @@ Key capabilities:
 Autoscaling behavior validated under sustained CPU pressure.
 
 Key findings:
-
-- HPA scales on relative utilization (usage / request), not absolute CPU.
-- Poorly calibrated requests block autoscaling.
-- CPU limits can distort scaling signals via throttling.
-- Runtime concurrency (Uvicorn workers) directly impacts scaling behavior.
-- Scale-up is aggressive.
-- Scale-down is conservative (stabilization window ≈ 300s).
+- HPA scales on relative utilization (usage / request).
+- CPU limits managed to avoid throttling during scaling signals.
+- **Observed**: Aggressive scale-up, conservative scale-down (300s window).
 
 Control loop validated:
-
-desiredReplicas = currentReplicas × (currentCPU / targetCPU)
-
-Observed:
-
-✔ Progressive scale-up under pressure  
-✔ Stabilized scale-down  
-✔ No flapping  
-✔ Observability-driven validation  
+`desiredReplicas = currentReplicas × (currentCPU / targetCPU)`
 
 ---
 
 # 🛡 Resiliency Validation
 
-Simulated worker failure:
+Simulated worker failure (`docker stop k3d-devops-lab-agent-1`):
 
-docker stop k3d-devops-lab-agent-1
-
-Observed:
-
-- Node → NotReady
-- Pods → Unknown
-- ReplicaSet recreated pods on healthy node
-- Service availability maintained
-
-Self-healing validated.
+- **ArgoCD Detection**: Identified drift in desired vs actual state.
+- **Recovery**: ReplicaSet recreated pods on healthy node automatically.
+- **Availability**: Service maintained via Traefik during failover.
 
 ---
 
 # 🔐 Workload Security Hardening
 
 SecurityContext applied:
-
-- runAsNonRoot: true
-- runAsUser: 1000
+- runAsNonRoot: true | runAsUser: 1000
 - allowPrivilegeEscalation: false
 - readOnlyRootFilesystem: true
 - capabilities: drop ALL
-
-Validated non-root container execution.
 
 ---
 
 # 📊 Observability
 
 kube-prometheus-stack installed to validate:
-
-- CPU per pod
-- Requests vs usage correlation
-- Throttling visibility
-- HPA behavior in real time
-- Node failure impact
-
-Monitoring used as validation tool, not decoration.
+- CPU/Memory per pod & Throttling visibility.
+- HPA behavior in real time via Grafana.
+- Monitoring used as validation tool, not decoration.
 
 ---
 
 # 🧠 Engineering Concepts Demonstrated
 
-- Immutable image versioning (SHA tagging)
-- Zero-downtime rolling updates
-- Resource right-sizing
-- CPU throttling mechanics
-- HPA control loop behavior
-- Stabilization windows
-- Runtime concurrency impact
-- PodDisruptionBudget enforcement
-- Node taints & scheduling isolation
-- ReplicaSet self-healing
-- Observability-first validation
-- CI/CD gating
-- Progressive Infrastructure-as-Code adoption
+- **GitOps Continuous Delivery** (ArgoCD)
+- **Immutable image versioning** (SHA tagging)
+- **Zero-downtime rolling updates**
+- **Drift detection & Self-healing**
+- **Resource right-sizing** & HPA control loops
+- **Observability-first validation**
+- **Infrastructure-as-Code proficiency**
 
 ---
 
@@ -209,9 +151,9 @@ Monitoring used as validation tool, not decoration.
 - [x] Observability stack
 - [x] Workload hardening
 - [x] Resiliency validation
+- [x] **GitOps Implementation (ArgoCD)**
 - [ ] Advanced HPA behavior policies
-- [ ] Terraform-driven full environment reproducibility
-- [ ] GitOps (ArgoCD)
+- [ ] Terraform-driven full environment reproducibility (In Progress)
 - [ ] Cloud deployment (AWS)
 
 ---
@@ -219,14 +161,6 @@ Monitoring used as validation tool, not decoration.
 # 🎯 Goal
 
 Build and document production-style DevOps systems publicly to demonstrate:
+Infrastructure maturity, automation depth, and a platform engineering mindset.
 
-- Infrastructure maturity
-- Automation depth
-- Cloud-native design principles
-- Platform engineering mindset
-- Observability-driven operations
-- Infrastructure as Code proficiency
-
-Building in public.  
-System by system.  
-Control loop by control loop.
+**Building in public. System by system. Control loop by control loop.**
