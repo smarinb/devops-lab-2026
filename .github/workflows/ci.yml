@@ -39,7 +39,7 @@ jobs:
 
       - name: Deploy with Helm
         run: |
-          helm upgrade --install devops-api ./devops-api-chart \
+          helm upgrade --install devops-api ./devops-api \
             --namespace helm-lab \
             --create-namespace \
             --set image.repository=ghcr.io/${{ github.repository }} \
